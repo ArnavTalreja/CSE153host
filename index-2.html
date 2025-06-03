@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>My PyScript App</title>
+  <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+  <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+</head>
+<body>
+
+<h1>CSE 153 Assignment 2</h1>
+<pre><code>
+  # Imports
+import numpy as np
+
+class PitchTokenizer:
+  def __init__(self, min_pitch = 21, max_pitch = 108):
+    self.min_pitch = min_pitch
+    self.max_pitch = max_pitch
+
+    self.PAD_TOKEN = 0
+    self.START_TOKEN = 1
+    self.END_TOKEN = 2
+
+    self.vocab_start = 3
+    self.vocab_size = (self.max_pitch - self.min_pitch + 1) + self.vocab_start
+  
+  def encode(self, pitch):
+    pitch = max(self.min_pitch, min(pitch, self.max_pitch))
+    return (pitch - self.min_pitch) + self.vocab_start
+  
+  def decode(self, token_id):
+    if token_id in [self.PAD_TOKEN, self.START_TOKEN, self.END_TOKEN]:
+      return token_id
+    return (token_id - self.vocab_start) + self.min_pitch
+  
+  def pad_token(self): return self.PAD_TOKEN
+  def start_token(self): return self.START_TOKEN
+  def end_token(self): return self.END_TOKEN
+
+class PauseTokenizer:
+  def __init__(self, min_bin = -3000, max_bin = 3000, bin_size = 100):
+    self.min_bin = min_bin
+    self.max_bin = max_bin
+    self.bin_size = bin_size
+  
+    self.bins = np.arange(self.min_bin, self.max_bin, self.bin_size)
+    self.extra_bins = 2
+    self.num_bins = len(self.bins)
+
+    self.PAD_TOKEN = 0
+    self.BOS_TOKEN = 1
+    self.EOS_TOKEN = 2
+    self.vocab_start = 3
+    self.vocab_size = self.num_bins + self.extra_bins + self.vocab_start
+  
+  def encode(self, pause):
+    if pause < self.min_bin:
+      return self.vocab_start
+    elif pause >= self.max_bin:
+      return self.vocab_start + self.num_bins + 1
+    else:
+      bin_index = np.digitize(pause, self.bins) - 1
+      return bin_index + self.vocab_start + 1
+  
+  def decode(self, token_id):
+    if token_id in [self.PAD_TOKEN, self.BOS_TOKEN, self.EOS_TOKEN]:
+      return token_id
+    if token_id == self.vocab_start:
+      return self.min_bin - self.bin_size // 2
+    elif token_id == self.vocab_start + self.num_bins + 1:
+      return self.max_bin + self.bin_size // 2
+    else:
+      bin_index = token_id - (self.vocab_start + 1)
+      left_edge = self.bins[bin_index]
+      center = left_edge + self.bin_size // 2
+      return center
+    
+  def pad_token(self): return self.PAD_TOKEN
+  def bos_token(self): return self.BOS_TOKEN
+  def eos_token(self): return self.EOS_TOKEN
+
+class DurationTokenizer:
+  def __init__(self, min_bin = 0, max_bin = 2000, bin_size = 120):
+    self.min_bin = min_bin
+    self.max_bin = max_bin
+    self.bin_size = bin_size
+
+    self.bins = np.arange(self.min_bin, self.max_bin, self.bin_size)
+    self.extra_bin = 1
+    self.num_bins = len(self.bins)
+
+    self.PAD_TOKEN = 0
+    self.BOS_TOKEN = 1
+    self.EOS_TOKEN = 2
+    self.vocab_start = 3
+    self.vocab_size = self.num_bins + self.extra_bin + self.vocab_start
+  
+  def encode(self, duration):
+    duration = max(duration, self.min_bin)
+    if duration >= self.max_bin:
+      return self.vocab_start + self.num_bins
+    else:
+      bin_index = np.digitize(duration, self.bins) - 1
+      return bin_index + self.vocab_start
+  
+  def decode(self, token_id):
+    if token_id in [self.PAD_TOKEN, self.BOS_TOKEN, self.EOS_TOKEN]:
+      return token_id
+    elif token_id == self.vocab_start + self.num_bins:
+      return self.max_bin + self.bin_size // 2
+    else:
+      bin_index = token_id - self.vocab_start
+      left_edge = self.bins[bin_index]
+      center = left_edge + self.bin_size // 2
+      return center
+  
+  def pad_token(self): return self.PAD_TOKEN
+  def bos_token(self): return self.BOS_TOKEN
+  def eos_token(self): return self.EOS_TOKEN
+
+class Tokenizer:
+  def __init__(self):
+    self.pitch_tokenizer = PitchTokenizer()
+    self.pause_tokenizer = PauseTokenizer()
+    self.duration_tokenizer = DurationTokenizer()
+
+  def encode(self, sequence):
+    encoded_sequence = []
+    for pitch, pause, duration in sequence:
+      encoded_sequence.append((
+        self.pitch_tokenizer.encode(pitch),
+        self.pause_tokenizer.encode(pause),
+        self.duration_tokenizer.encode(duration)
+      ))
+    return encoded_sequence
+  
+  def decode(self, pitch_token, pause_token, duration_token):
+    return(
+      self.pitch_tokenizer.decode(pitch_token),
+      self.pause_tokenizer.decode(pause_token),
+      self.duration_tokenizer.decode(duration_token)
+    )
+  
+  def vocab_sizes(self):
+    return{
+      "pitch": self.pitch_tokenizer.vocab_size,
+      "pause": self.pause_tokenizer.vocab_size,
+      "duration": self.duration_tokenizer.vocab_size
+    }
+  
+  def pad_token(self):
+    return (
+        self.pitch_tokenizer.pad_token(),
+        self.pause_tokenizer.pad_token(),
+        self.duration_tokenizer.pad_token()
+    )
+  
+  def start_token(self):
+    return (
+        self.pitch_tokenizer.start_token(),
+        self.pause_tokenizer.start_token(),
+        self.duration_tokenizer.start_token()
+    )
+  
+  def end_token(self):
+    return (
+        self.pitch_tokenizer.end_token(),
+        self.pause_tokenizer.end_token(),
+        self.duration_tokenizer.end_token()
+    )
+</code></pre>
+<pre><code>
+  import torch
+import torch.nn as nn
+
+class TokenEmbedder(nn.Module):
+    def __init__(self, pitch_vocab_size, pause_vocab_size, duration_vocab_size, embedding_dim=32, output_dim=96):
+        super().__init__()
+
+        # Individual token embeddings
+        self.pitch_embedding = nn.Embedding(pitch_vocab_size, embedding_dim)
+        self.pause_embedding = nn.Embedding(pause_vocab_size, embedding_dim)
+        self.duration_embedding = nn.Embedding(duration_vocab_size, embedding_dim)
+
+        # Final projection layer: from 96 → 128
+        self.projection = nn.Linear(embedding_dim * 3, output_dim)
+
+    def forward(self, pitch_tokens, pause_tokens, duration_tokens):
+        # Shape: [batch_size, seq_len]
+        pitch_emb = self.pitch_embedding(pitch_tokens)
+        pause_emb = self.pause_embedding(pause_tokens)
+        duration_emb = self.duration_embedding(duration_tokens)
+
+        combined = torch.cat([pitch_emb, pause_emb, duration_emb], dim=-1)
+
+        return combined, self.projection(combined)
+</code></pre>
+<pre><code>
+  import torch
+import torch.nn as nn
+
+class LearnedPositionalEncoding(nn.Module):
+    def __init__(self, max_seq_len: int, d_model: int):
+        """
+        Args:
+            max_seq_len: maximum number of tokens in a sequence (e.g., 128)
+            d_model: dimensionality of the embeddings (e.g., 128)
+        """
+        super().__init__()
+        self.pos_embedding = nn.Embedding(max_seq_len, d_model)
+
+    def forward(self, x):
+        """
+        Args:
+            x: tensor of shape (batch_size, seq_len, d_model)
+               (only the shape is used to generate positions)
+
+        Returns:
+            pos_emb: positional embeddings of shape (batch_size, seq_len, d_model)
+        """
+        batch_size, seq_len, _ = x.size()
+        positions = torch.arange(seq_len, device=x.device).unsqueeze(0)  # (1, seq_len)
+        pos_emb = self.pos_embedding(positions)  # (1, seq_len, d_model)
+        pos_emb = pos_emb.expand(batch_size, -1, -1)  # (batch_size, seq_len, d_model)
+        return pos_emb
+</code></pre>
+<pre><code>
+  import torch
+import numpy as np
+
+class MainTokenizer():
+    def __init__(self, tokenizer, embedder, positionalEncoder):
+        self.tokenMap = {}
+        self.tokenizer = tokenizer
+        self.embedder = embedder
+        self.positionalEncoder = positionalEncoder
+        
+
+    def tokenize(self, input, isOutput=False):
+        tokenized = self.tokenizer.encode(input)
+        pitch_tokens = torch.tensor([[p for p, _, _ in tokenized]])
+        pause_tokens = torch.tensor([[pa for _, pa, _ in tokenized]])
+        duration_tokens = torch.tensor([[d for _, _, d in tokenized]])
+        embedded, embedded_transform = self.embedder(pitch_tokens, pause_tokens, duration_tokens)
+        
+        for i in range(embedded.shape[1]):
+            key = tuple(embedded[0][i].tolist()) 
+            self.tokenMap[key] = (pitch_tokens[0][i].item(), pause_tokens[0][i].item(), duration_tokens[0][i].item())
+
+
+        if isOutput:
+            return embedded[0]
+
+        encoded = self.positionalEncoder(embedded_transform)
+        return encoded[0]
+
+    def retrieve(self, pitch_prediction, pause_prediction, duration_prediction):
+        # concatenates predicted tokens and then applies projection layer
+        combined_tokens = torch.cat((pitch_prediction, pause_prediction, duration_prediction), dim=-1)[0, 0, :]
+
+        # makes embedding keys as a single tensor for comparison
+        map_keys = list(self.tokenMap.keys())
+
+        # finds most similar key in tokenMap
+        # retrieves original tokens
+        best_key = None
+        best_similarity = 0
+        for key in map_keys:
+            key_tensor = torch.tensor(key)
+            key_tensor = key_tensor / key_tensor.norm()
+            similarity = torch.dot(combined_tokens, key_tensor)
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_key = key
+
+        if best_key is None:
+            print("Retrieve broke")
+            print("No best key found, returning None")
+            return None
+        return self.tokenMap[best_key]
+</code></pre>
+<pre><code>
+  import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class OutputHeads(nn.Module):
+    def __init__(self, input_dim=96, output_dim_per_head=32):
+        super().__init__()
+        self.pitch_head = nn.Linear(input_dim, output_dim_per_head)
+        self.pause_head = nn.Linear(input_dim, output_dim_per_head)
+        self.duration_head = nn.Linear(input_dim, output_dim_per_head)
+
+    def forward(self, x):
+        """
+        x: Tensor of shape (batch_size, seq_len, input_dim)
+        Returns:
+            pitch_out:    (batch_size, seq_len, 32)
+            pause_out:    (batch_size, seq_len, 32)
+            duration_out: (batch_size, seq_len, 32)
+        """
+        pitch_out = self.pitch_head(x)
+        pause_out = self.pause_head(x)
+        duration_out = self.duration_head(x)
+        
+        # Concatenare and return
+        combined = torch.cat((pitch_out, pause_out, duration_out), dim=-1)
+        return combined
+    
+class DecoderOnlyLayer(nn.Module):
+    def __init__(self, embed_dim, num_heads, ff_hidden_dim, dropout=0.1):
+        super().__init__()
+        self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
+        self.norm1     = nn.LayerNorm(embed_dim)
+        self.dropout1  = nn.Dropout(dropout)
+
+        self.feedforward = nn.Sequential(
+            nn.Linear(embed_dim, ff_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(ff_hidden_dim, embed_dim)
+        )
+        self.norm2    = nn.LayerNorm(embed_dim)
+        self.dropout2 = nn.Dropout(dropout)
+
+    def forward(self, x, tgt_mask=None, tgt_key_padding_mask=None):
+        # 1) masked self‐attention
+        attn_output, _ = self.self_attn(x, x, x,
+                                        attn_mask=tgt_mask,
+                                        key_padding_mask=tgt_key_padding_mask)
+        x = x + self.dropout1(attn_output)
+        x = self.norm1(x)
+
+        # 2) feed‐forward
+        ff_output = self.feedforward(x)
+        x = x + self.dropout2(ff_output)
+        x = self.norm2(x)
+
+        return x
+</code></pre>
+<pre><code>
+  import torch
+import torch.nn as nn
+from model import OutputHeads, DecoderOnlyLayer
+
+class MusicTransformer(nn.Module):
+  def __init__(self, embed_dim=96, num_heads=2, ff_hidden_dim=256, num_layers=2, dropout=0.1):
+    super().__init__()
+    self.decoder_layers = nn.ModuleList([
+        DecoderOnlyLayer(embed_dim, num_heads, ff_hidden_dim, dropout)
+        for _ in range(num_layers)
+    ])
+    self.output_heads = OutputHeads(input_dim=embed_dim, output_dim_per_head=32)
+    
+  def generate_causal_mask(self, sz):
+    return torch.triu(torch.ones(sz, sz) * float('-inf'), diagonal=1)
+
+
+  def forward(self, x):
+    L = x.size(1)
+    causal_mask = torch.triu(torch.full((L, L), float("-inf")), diagonal=1).to(x.device)
+
+    out = x
+    for layer in self.decoder_layers:
+        # now each decoder‐only layer doesn’t need a `memory` tensor
+        out = layer(
+            out,
+            tgt_mask=causal_mask,
+            tgt_key_padding_mask=None
+        )
+    out_head = self.output_heads(out)
+    return out_head[:, 0:1, :]
+</code></pre>
+<pre><code>
+  import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, random_split
+
+SEQ_LEN = 4
+
+class Pipeline():
+    def __init__(self,
+                 tokenizer,
+                 model,
+                 lr=1e-3
+                 ):
+        self.tokenizer = tokenizer
+        self.model = model
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        self.criterion = nn.MSELoss()
+
+    def evaluate(self, loader):
+        self.model.eval()
+
+        # Evaluate the model on validation data
+        with torch.no_grad():
+            total_loss = 0.0
+            for inputs, labels in loader:
+                outputs = self.model(inputs)
+                loss = self.criterion(outputs, labels)
+                total_loss += loss.item()
+        avg_loss = total_loss / len(loader)
+        print(f"Validation Loss: {avg_loss:.4f}")
+        return avg_loss
+
+    '''
+    Training data format: [[[note, duration, pause] x 5] x num_data]
+    '''
+    def train(self, train_data, epochs=20, batch_size=2):
+        # Tokenize the data
+        tokenized = [(self.tokenizer.tokenize(item[:SEQ_LEN]), self.tokenizer.tokenize(item[SEQ_LEN:], isOutput=True)) for item in train_data]
+        
+        # Only using 1000 for now
+        #tokenized = [(self.tokenizer.tokenize(item[:SEQ_LEN]), self.tokenizer.tokenize(item[SEQ_LEN:], isOutput=True)) for item in train_data[:1000]]
+
+        # Create data loaders from data
+        train_set, valid_set = random_split(tokenized, [int(len(tokenized) * 0.8), len(tokenized) - int(len(tokenized) * 0.8)])
+        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+        valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=False)
+
+        print("Starting training...")
+
+        # Train the model
+        best_val_loss = float('inf')
+        for epoch in range(epochs):
+            self.model.train()
+            total_loss = 0.0
+
+            for inputs, labels in train_loader:
+                # Forward pass
+                outputs = self.model(inputs)
+
+                # Compute loss
+                loss = self.criterion(outputs, labels)
+                total_loss += loss.item()
+
+                # Backward pass and optimization
+                self.optimizer.zero_grad()
+                loss.backward(retain_graph=True)
+                self.optimizer.step()
+
+            # Print epoch number, loss
+            print(f"Epoch [{epoch + 1}/{epochs}], Training Loss: {total_loss / len(train_loader):.4f}")
+
+            # Evaluate on validation set
+            val_loss = self.evaluate(valid_loader)
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                print(f"New best validation loss: {best_val_loss:.4f}")
+                # Save the model state
+                torch.save(self.model.state_dict(), 'best_model.pth')
+</code></pre>
+<pre><code>
+  
+from tokenizer import Tokenizer
+from embedder import TokenEmbedder
+from encoder import LearnedPositionalEncoding
+from main_tokenizer import MainTokenizer
+from transformer import MusicTransformer
+from pipeline import Pipeline
+
+import miditoolkit
+from typing import List, Tuple
+from collections import defaultdict
+import os
+def extract_notes(midi_path):
+    """
+    Load a MIDI file and extract all notes across all instruments.
+    Returns three NumPy arrays: pitches, durations (ticks), velocities.
+    """
+    midi_obj = miditoolkit.MidiFile(midi_path)
+    out = defaultdict(lambda: defaultdict(list))
+
+    for inst in midi_obj.instruments:
+        for note in inst.notes:
+            out[inst.name]["pitches"].append(note.pitch)
+            out[inst.name]["durations"].append(note.end - note.start)
+            out[inst.name]["velocities"].append(note.velocity)
+            out[inst.name]["starts"].append(note.start)
+            out[inst.name]["ends"].append(note.end)
+
+    return out
+midi_folder = "./POP909"
+midi_paths = [
+    os.path.join(root, fname)
+    for root, _, files in os.walk(midi_folder)
+    for fname in files
+    if fname.lower().endswith(".mid") and not "v" in fname
+]
+
+all_notes = {}  # map from basename (e.g. "001") → dict of arrays
+for path in midi_paths:
+    key = os.path.splitext(os.path.basename(path))[0]
+    all_notes[key] = extract_notes(path)
+token_vals = []
+for key, value in all_notes.items():
+    tokens = []
+    for i in range(len(value["PIANO"]["pitches"])):
+        temp = (value["PIANO"]["pitches"][i], value["PIANO"]["starts"][i], value["PIANO"]["durations"][i])
+        tokens.append(temp)
+    # tokens = np.array(tokens)
+    token_vals.append(tokens)
+
+# Sort each token list by start time
+for i in range(len(token_vals)):
+    token_vals[i] = sorted(token_vals[i], key=lambda x: x[1])
+
+all_tokens = []
+for tokens in token_vals:
+    temp = []
+    for i in range(len(tokens)-1):
+        # (pitch, pause time, duration)
+        pitch = tokens[i][0]
+        pause = tokens[i+1][1] - tokens[i][1] - tokens[i][2]
+        dur = tokens[i][2]
+        temp.append((pitch, pause, dur))
+    temp.append((tokens[-1][0], 0, tokens[-1][2]))
+    all_tokens.append(temp)
+inputs = []
+for song in all_tokens:
+    # Separate song into arrays of 5
+    i = 0
+    while i+5 < len(song):
+        inputs.append(song[i:i+5])
+        i += 5
+    
+tokenizer = Tokenizer()
+vocab_sizes = tokenizer.vocab_sizes()
+embedder = TokenEmbedder(
+  pitch_vocab_size = vocab_sizes['pitch'],
+  pause_vocab_size = vocab_sizes['pause'],
+  duration_vocab_size = vocab_sizes['duration'],
+  embedding_dim = 32,
+  output_dim = 96
+)
+max_seq_len = 4
+pos_encoder = LearnedPositionalEncoding(max_seq_len=max_seq_len, d_model=96)
+main_tokenizer = MainTokenizer(tokenizer, embedder, pos_encoder)
+
+model = MusicTransformer()
+pipeline = Pipeline(
+    tokenizer=main_tokenizer,
+    model=model
+)
+pipeline.train(
+    train_data=inputs,
+    epochs=20
+)
+Starting training...
+Epoch [1/20], Training Loss: 0.8930
+Validation Loss: 0.8920
+New best validation loss: 0.8920
+Epoch [2/20], Training Loss: 0.8918
+Validation Loss: 0.8921
+Epoch [3/20], Training Loss: 0.8917
+Validation Loss: 0.8922
+Epoch [4/20], Training Loss: 0.8916
+Validation Loss: 0.8931
+Epoch [5/20], Training Loss: 0.8917
+Validation Loss: 0.8922
+Epoch [6/20], Training Loss: 0.8917
+Validation Loss: 0.8925
+Epoch [7/20], Training Loss: 0.8917
+Validation Loss: 0.8921
+Epoch [8/20], Training Loss: 0.8917
+Validation Loss: 0.8919
+New best validation loss: 0.8919
+Epoch [9/20], Training Loss: 0.8917
+Validation Loss: 0.8920
+Epoch [10/20], Training Loss: 0.8917
+Validation Loss: 0.8926
+Epoch [11/20], Training Loss: 0.8917
+Validation Loss: 0.8925
+Epoch [12/20], Training Loss: 0.8917
+Validation Loss: 0.8920
+Epoch [13/20], Training Loss: 0.8916
+Validation Loss: 0.8926
+Epoch [14/20], Training Loss: 0.8917
+Validation Loss: 0.8919
+New best validation loss: 0.8919
+Epoch [15/20], Training Loss: 0.8917
+Validation Loss: 0.8918
+New best validation loss: 0.8918
+Epoch [16/20], Training Loss: 0.8917
+Validation Loss: 0.8923
+Epoch [17/20], Training Loss: 0.8916
+Validation Loss: 0.8926
+Epoch [18/20], Training Loss: 0.8917
+Validation Loss: 0.8924
+Epoch [19/20], Training Loss: 0.8917
+Validation Loss: 0.8923
+Epoch [20/20], Training Loss: 0.8917
+Validation Loss: 0.8923
+# Test generation
+generated = inputs[9][:4]
+print("original:", generated)
+for i in range(200):
+    token = main_tokenizer.tokenize(generated[:4])
+    token = token.unsqueeze(0)  # Add batch dimension
+    out = model(token)
+    new_val = main_tokenizer.retrieve(out[:, :, :32], out[:, :, 32:64], out[:, :, 64:96])
+    generated.append(new_val)
+original: [(48, 324, 156), (41, -79, 79), (65, -85, 85), (69, -88, 88)]
+print(generated)
+[(48, 324, 156), (41, -79, 79), (65, -85, 85), (69, -88, 88), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150)]
+VELOCITY = 80
+def convert_tuple_to_midi(generated, starter=None, filename = "generated.mid", save_path='./output'):
+    """
+    Format of both `generated` and `starter`:
+    List[Tuple[Pitch, Duration, Pause time]]
+    """
+    midi_obj = miditoolkit.MidiFile()
+    inst = miditoolkit.Instrument(program=0, is_drum=False, name="Generated")
+    midi_obj.instruments.append(inst)
+    curr_time = 0
+    if starter:
+        for pitch, duration, pause in starter:
+            start_time = curr_time
+            end_time = start_time + duration
+            inst.notes.append(miditoolkit.Note(
+                start=start_time, end=end_time, pitch=pitch,
+                velocity=VELOCITY))
+            curr_time += duration + pause
+
+    for pitch, duration, pause in generated:
+        start_time = curr_time
+        end_time = start_time + duration
+        inst.notes.append(miditoolkit.Note(
+            start=start_time, end=end_time, pitch=pitch,
+            velocity=VELOCITY))
+        curr_time += duration + pause
+
+    midi_obj.ticks_per_beat = 480
+    midi_obj.instruments[0].is_drum = False
+    midi_obj.instruments[0].name = "Generated"
+    os.makedirs(save_path, exist_ok=True)
+    midi_obj.dump(os.path.join(save_path, filename))
+    
+convert_tuple_to_midi(generated, starter=None, filename="symbolic_conditioned.mid", save_path='./submission_output')
+generated = [tokenizer.pad_token()]*4
+print("original:", generated)
+for i in range(200):
+    token = main_tokenizer.tokenize(generated[:4])
+    token = token.unsqueeze(0)  # Add batch dimension
+    out = model(token)
+    new_val = main_tokenizer.retrieve(out[:, :, :32], out[:, :, 32:64], out[:, :, 64:96])
+    generated.append(new_val)
+original: [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
+print(generated)
+[(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150), (39, 315, 150)]
+convert_tuple_to_midi(generated, starter=None, filename="symbolic_unconditioned.mid", save_path='./submission_output')
+</code></pre>
+<pre><code>
+  #!/usr/bin/env python3
+import argparse
+import os
+import subprocess
+import sys
+from midi2audio import FluidSynth
+
+'''
+SETUP:
+pip install midi2audio
+install ffmpeg and fluidsynth to path (conda / brew)
+
+TO RUN:
+python ./midi_to_mp3.py ./PATH/TO/MIDI \
+  --soundfont ./SoundFonts/FluidR3_GM.sf2 \
+  --out ./output
+'''
+def midi_to_mp3(midi_path, out_dir, soundfont):
+    # Verify paths
+    if not os.path.isfile(midi_path):
+        sys.exit(f"❌ MIDI file not found: {midi_path}")
+    if not os.path.isfile(soundfont):
+        sys.exit(f"❌ SoundFont file not found: {soundfont}")
+
+    os.makedirs(out_dir, exist_ok=True)
+    base = os.path.splitext(os.path.basename(midi_path))[0]
+    wav_path = os.path.join(out_dir, f"{base}.wav")
+    mp3_path = os.path.join(out_dir, f"{base}.mp3")
+
+    # 1) MIDI → WAV
+    fs = FluidSynth(sound_font=soundfont)
+    try:
+        fs.midi_to_audio(midi_path, wav_path)
+    except Exception as e:
+        sys.exit(f"❌ FluidSynth error: {e}")
+
+    # 2) WAV → MP3 via ffmpeg
+    cmd = ["ffmpeg", "-y", "-i", wav_path, mp3_path]
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"❌ FFmpeg error (exit {e.returncode})")
+
+    # 3) Cleanup
+    try:
+        os.remove(wav_path)
+    except OSError:
+        pass
+
+    print(f"✅ Converted:\n  {midi_path}\n→ {mp3_path}")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Convert a MIDI file to MP3 using midi2audio + ffmpeg")
+    parser.add_argument("midi_file", help="Path to the input .mid file")
+    parser.add_argument(
+        "-s", "--soundfont",
+        required=True,
+        help="Path to a .sf2 SoundFont (e.g. /usr/share/sounds/sf2/FluidR3_GM.sf2)")
+    parser.add_argument(
+        "-o", "--out",
+        default="output",
+        help="Directory to write the .mp3 into (default: ./output)")
+    args = parser.parse_args()
+
+    midi_to_mp3(args.midi_file, args.out, args.soundfont)
+
+if __name__ == "__main__":
+    main()
+</code></pre>
+</body>
+</html>
